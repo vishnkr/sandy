@@ -13,8 +13,8 @@ function createButton(particle) {
         button.id = "selected-button"
         button.classList.add("selected");
         console.log(`Selected particle type: ${particle.name}`);
+        setSelectedParticle(particle);
     });
-    setSelectedParticle(particle);
 
     return button;
 }
@@ -45,7 +45,7 @@ export function setupController(element){
     });
     
     const btns = document.getElementById("buttons")
-    PARTICLE_PROPERTIES.forEach((particle) => {
+    Object.values(PARTICLE_PROPERTIES).forEach((particle) => {
         const button = createButton(particle);
         btns.appendChild(button);
     });

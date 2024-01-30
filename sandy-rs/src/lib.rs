@@ -1,193 +1,186 @@
 use wasm_bindgen::prelude::*;
-
-
-#[derive(Clone,Copy,Debug)]
-pub struct Particle{
-    pub particle_type: ParticleType,
-
+extern crate cfg_if;
+extern crate rand;
+use rand::{Rng,SeedableRng};
+use rand::rngs::SmallRng;
+use element::*;
+extern crate console_error_panic_hook;
+mod element;
+mod utils;
+/* 
+cfg_if! {
+    if #[cfg(feature = "console_error_panic_hook")] {
+        extern crate console_error_panic_hook;
+        pub use self::console_error_panic_hook::set_once as set_panic_hook;
+    } else {
+        #[inline]
+         pub fn set_panic_hook() {}
+    }
 }
+*/
+
+#[wasm_bindgen]
+extern "C" {
+    fn alert(s: &str);
+}
+
+#[wasm_bindgen]
+pub fn greet(name: &str) {
+    alert(&format!("Hello, {}!", name));
+}
+
+#[wasm_bindgen]
+#[repr(C)]
+#[derive(Clone,Copy,Debug)]
+pub struct Cell{
+    pub element_type: ElementType,
+    //bitmask to store misc info. Currently msb stores update_status
+    mask: u8,
+}
+
+const W: f64 = 5.0;
 
 pub struct Dimensions{
     width: u32,
     height: u32,
 }
 
+
 #[wasm_bindgen]
-pub struct Matrix{
+pub struct World{
     dimensions: Dimensions,
-    particles: Vec<Particle>,
-
+    cells: Vec<Cell>,
+    frame_count:u8,
+    rng: SmallRng,
 }
 
-#[repr(u8)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ParticleType{
-    Empty,
-    Sand,
-    Water,
-    Stone,
-    Ice,
-    Fire,
-    Acid,
-}
 
-const EMPTY_PARTICLE : Particle = Particle{
-    particle_type: ParticleType::Empty
+const EMPTY_CELL: Cell = Cell {
+    element_type: ElementType::Empty,
+    mask:0,
 };
 
-impl Matrix{
-    pub fn new(height:u32, width: u32)->Matrix{
-        let particles = (0..width*height).map(|_i| EMPTY_PARTICLE).collect();
-        Matrix{
-            particles,
-            dimensions: Dimensions{ height, width}
-        }
-    }
+#[wasm_bindgen]
+#[derive(Clone, Copy, Debug)]
+pub struct Coordinates{
+    x: u32,
+    y: u32,
+}
 
-    fn get_index(&self,x:u32,y:u32)->usize{
-        (self.dimensions.width*x + y) as usize
+impl World{
+    fn rand_dir(&mut self) -> i32 {
+        let i = self.rand_int(1000);
+        (i % 3) - 1
     }
+    fn rand_int(&mut self, n: i32) -> i32 {
+        self.rng.gen_range(0..n)
+    }
+}
 
-    pub fn reset(&mut self){
-        for i in 0..self.dimensions.width{
-            for j in 0..self.dimensions.height{
-                let index = self.get_index(i, j);
-                self.particles[index] = EMPTY_PARTICLE;
-            }
+#[wasm_bindgen]
+impl World{
+    #[wasm_bindgen(constructor)]
+    pub fn new(rows:u32,cols:u32)->World{
+        let width = cols;
+        let height = rows;
+        let cells:Vec<Cell> = (0..width*height).map(|_i| EMPTY_CELL).collect();
+        console_error_panic_hook::set_once();
+        World{
+            cells,
+            dimensions: Dimensions{ height, width},
+            frame_count:0,
+            rng : SmallRng::from_entropy(),
         }
     }
     
-}
-
-
-/* 
-use egui_macroquad::{egui};
-use macroquad::prelude::*;
-
-#[derive(Debug, Clone, Copy)]
-pub struct ParticleColor{
-    pub r: u8,
-    pub g: u8,
-    pub b: u8
-}
-
-impl ParticleColor{
-    pub const fn new(r:u8,g:u8, b:u8)->ParticleColor{
-        ParticleColor{r,g,b}
+    //might not work since Cell
+    pub fn cells(&self) -> *const Cell {
+        self.cells.as_ptr()
     }
-}
-#[derive(Debug, Clone, Copy)]
-pub struct ParticleProps{
-    pub color: ParticleColor,
-    pub name: &'static str
-}
 
-
-
-pub struct Controller{
-    pub selected_ptype: ParticleType
-}
-
-const PARTICLE_PROPERTIES: [ParticleProps;6] = [
-    ParticleProps{
-        color: ParticleColor::new(223, 175, 89),
-        name: "Sand",
-    },
-    ParticleProps{
-        color: ParticleColor::new(52, 108, 202),
-        name: "Water",
-    },
-    ParticleProps{
-        color: ParticleColor::new(101, 106, 115),
-        name: "Stone",
-    },
-    ParticleProps{
-        color: ParticleColor::new(195, 214, 247),
-        name: "Ice",
-    },
-    ParticleProps{
-        color: ParticleColor::new(255, 123, 36),
-        name: "Fire",
-    },
-    ParticleProps{
-        color: ParticleColor::new(165, 250, 95),
-        name: "Acid",
-    },
-];
-
-impl ParticleType{
-    fn get_props(&self)->ParticleProps{
-        PARTICLE_PROPERTIES[*self as usize]
+    pub fn get_element_type(&self,index:usize)->ElementType{
+        self.cells[index].element_type.clone()
     }
-}
-#[macroquad::main("Sandy")]
-async fn main() {
-    let mut controller = Controller{
-        selected_ptype: ParticleType::Sand
-    };
-    loop {
-        clear_background(BLACK);
-        egui_macroquad::ui(|ctx| setup_egui(ctx,&mut controller));
-        egui_macroquad::draw();
-        next_frame().await;
+
+    pub fn width(&self)->u32{
+        self.dimensions.width
     }
-}
 
-fn setup_egui(ctx: &egui::Context, controller: &mut Controller){
-    egui::Window::new("Controller")
-        .show(ctx, |ui| {
-            ui.label("Particle Type");
-            ui.separator();
-            ui.group(|ui|{
-                ui.vertical_centered_justified(|ui|{
-                    particle_selectable(ui, ParticleType::Sand, controller);
-                    particle_selectable(ui, ParticleType::Water, controller);
-                    particle_selectable(ui, ParticleType::Stone, controller);
-                    particle_selectable(ui, ParticleType::Fire, controller);
-                    particle_selectable(ui, ParticleType::Ice, controller);
-                    particle_selectable(ui, ParticleType::Acid, controller);
-                })
-            })
-    });
-}
-
-fn particle_selectable(ui: &mut egui::Ui, particle_type: ParticleType, controller: &mut Controller){
-    egui::Frame::none().fill(particle_type.get_props().color.into()).show(ui,|ui|{
-        ui.selectable_value(&mut controller.selected_ptype, particle_type, 
-            egui::RichText::new(particle_type.get_props().name).background_color(egui::Color32::from_black_alpha(150))
-        );
-    });
-}
-
-impl From<ParticleColor> for egui::Color32 {
-    fn from(value: ParticleColor) -> Self {
-        egui::Color32::from_rgb(value.r, value.g, value.b)
+    pub fn height(&self)->u32{
+        self.dimensions.height
     }
-}
 
-impl From<ParticleColor> for Color {
-    fn from(value: ParticleColor) -> Self {
-        Color::new(
-            value.r as f32 / 255.0,
-            value.g as f32 / 255.0,
-            value.b as f32 / 255.0,
-            1.0,
-        )
+    pub fn get_index(&self, row: u32, column: u32) -> usize {
+        (row * self.dimensions.width + column) as usize
     }
-}
 
-impl From<Color> for ParticleColor {
-    fn from(value: Color) -> Self {
-        if value.a < 1.0 {
-            println!(
-                "WARNING: Converting Color to ParticleColor ignores alpha of {}",
-                value.a
-            );
+    pub fn get_coords(&self,pos:u32)->Coordinates{
+        Coordinates{ y:pos/self.dimensions.width, x:pos%self.dimensions.width}
+    }
+
+    #[wasm_bindgen(js_name="emptyCell")]
+    pub fn empty_cell(self)->Cell{
+        EMPTY_CELL
+    }
+
+    pub fn toggle_cell(&mut self, idx:usize) {
+        //let idx = self.get_index(row, column);
+        self.cells[idx] = Cell{element_type: ElementType::Sand, mask:0};
+    }
+
+    pub fn reset(&mut self){
+        for i in 0..self.dimensions.width*self.dimensions.height{
+            self.cells[i as usize] = EMPTY_CELL;
         }
-        ParticleColor::new(
-            (value.r * 255.0) as u8,
-            (value.g * 255.0) as u8,
-            (value.b * 255.0) as u8,
-        )
     }
-}*/
+    
+    fn set_cell(&mut self, idx:usize , mut cell:Cell){
+        cell.mask = (self.frame_count & 1) << 7;
+        self.cells[idx] = cell;
+    }
+
+    fn remove_cell(&mut self, idx:usize){
+        self.set_cell(idx, EMPTY_CELL)
+    }
+
+    pub fn paint(&mut self, x:u32, y:u32,element_type:ElementType){
+        let idx = self.get_index(x, y);
+        self.set_cell(idx, Cell{element_type,mask:0});
+        // add random cells with same particle type around this position for brush like effect
+        let brush_size:i32 = 10;
+        for _ in 0..brush_size {
+            let offset_x = self.rand_dir() * self.rand_int(3);
+            let offset_y = self.rand_dir() * self.rand_int(3);
+
+            let new_x = x.wrapping_add(offset_x as u32);
+            let new_y = y.wrapping_add(offset_y as u32);
+
+            // Check if the new position is within bounds
+            if self.is_in_bounds(new_x, new_y) {
+                let new_idx = self.get_index(new_y, new_x);
+                self.set_cell(new_idx, Cell { element_type, mask: 0 });
+            }
+        }
+    }
+
+    fn is_in_bounds(&self,x:u32,y:u32)->bool{
+        x>=0 && x<self.dimensions.height.try_into().unwrap() && y>=0 && y<self.dimensions.width.try_into().unwrap()
+    }
+
+    pub fn is_cell_empty(&self,x:u32,y:u32)->bool{
+        let index = self.get_index(x, y);
+        self.cells[index].element_type==ElementType::Empty
+    }
+
+    pub fn tick(&mut self){
+        let mut next  = self.cells.clone();
+        for row in 0..self.dimensions.height {
+            for col in 0..self.dimensions.width {
+
+            }
+        }
+        self.cells = next
+    }
+
+    
+}
