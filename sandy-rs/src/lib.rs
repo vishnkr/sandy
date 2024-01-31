@@ -1,7 +1,8 @@
+
 use wasm_bindgen::prelude::*;
 extern crate cfg_if;
 extern crate rand;
-use rand::{Rng,SeedableRng};
+use rand::{ Rng, SeedableRng};
 use rand::rngs::SmallRng;
 use element::*;
 extern crate console_error_panic_hook;
@@ -22,6 +23,8 @@ cfg_if! {
 #[wasm_bindgen]
 extern "C" {
     fn alert(s: &str);
+    #[wasm_bindgen(js_namespace = console)]
+    fn log(s: &str);
 }
 
 #[wasm_bindgen]
@@ -75,14 +78,17 @@ impl World{
     fn rand_int(&mut self, n: i32) -> i32 {
         self.rng.gen_range(0..n)
     }
+
+    fn rand_float(&mut self) -> f64 {
+        let int_val = self.rand_int(1000);
+        int_val as f64 / 1000.0
+    }
 }
 
 #[wasm_bindgen]
 impl World{
     #[wasm_bindgen(constructor)]
-    pub fn new(rows:u32,cols:u32)->World{
-        let width = cols;
-        let height = rows;
+    pub fn new(height:u32,width:u32)->World{
         let cells:Vec<Cell> = (0..width*height).map(|_i| EMPTY_CELL).collect();
         console_error_panic_hook::set_once();
         World{
@@ -110,22 +116,15 @@ impl World{
         self.dimensions.height
     }
 
-    pub fn get_index(&self, row: u32, column: u32) -> usize {
-        (row * self.dimensions.width + column) as usize
-    }
+   
 
     pub fn get_coords(&self,pos:u32)->Coordinates{
-        Coordinates{ y:pos/self.dimensions.width, x:pos%self.dimensions.width}
+        Coordinates{ y:pos%self.dimensions.width, x:pos/self.dimensions.width}
     }
 
     #[wasm_bindgen(js_name="emptyCell")]
     pub fn empty_cell(self)->Cell{
         EMPTY_CELL
-    }
-
-    pub fn toggle_cell(&mut self, idx:usize) {
-        //let idx = self.get_index(row, column);
-        self.cells[idx] = Cell{element_type: ElementType::Sand, mask:0};
     }
 
     pub fn reset(&mut self){
@@ -143,44 +142,109 @@ impl World{
         self.set_cell(idx, EMPTY_CELL)
     }
 
-    pub fn paint(&mut self, x:u32, y:u32,element_type:ElementType){
-        let idx = self.get_index(x, y);
-        self.set_cell(idx, Cell{element_type,mask:0});
+
+    pub fn get_index(&self, row: u32, col: u32) -> u32 {
+        let res = row * self.dimensions.width + col;
+        res
+    }
+
+    pub fn paint(&mut self, /*idx:usize*/ row:u32,col:u32,element_type:ElementType){
+        let idx = self.get_index(row, col);
+        self.cells[idx as usize] = Cell{element_type,mask:0};
         // add random cells with same particle type around this position for brush like effect
-        let brush_size:i32 = 10;
-        for _ in 0..brush_size {
-            let offset_x = self.rand_dir() * self.rand_int(3);
-            let offset_y = self.rand_dir() * self.rand_int(3);
+        let matrix = 5;
+        let extent = matrix / 2;
+        for i in (-extent as i32)..=(extent as i32) {
+            for j in (-extent as i32)..=(extent as i32) {
+                if self.rand_float() < 0.50 {
+                    let new_col = col.wrapping_add(i as u32);
+                    let new_row = row.wrapping_add(j as u32);
 
-            let new_x = x.wrapping_add(offset_x as u32);
-            let new_y = y.wrapping_add(offset_y as u32);
-
-            // Check if the new position is within bounds
-            if self.is_in_bounds(new_x, new_y) {
-                let new_idx = self.get_index(new_y, new_x);
-                self.set_cell(new_idx, Cell { element_type, mask: 0 });
+                    // Check if the new position is within bounds
+                    if self.is_in_bounds(new_row, new_col) {
+                        let new_idx = self.get_index(new_row, new_col) as usize;
+                        self.set_cell(new_idx, Cell { element_type, mask: 0 });
+                    }
+                }
             }
         }
     }
 
     fn is_in_bounds(&self,x:u32,y:u32)->bool{
-        x>=0 && x<self.dimensions.height.try_into().unwrap() && y>=0 && y<self.dimensions.width.try_into().unwrap()
+        x<self.dimensions.height && y<self.dimensions.width
     }
 
     pub fn is_cell_empty(&self,x:u32,y:u32)->bool{
-        let index = self.get_index(x, y);
+        let index = self.get_index(x, y) as usize;
         self.cells[index].element_type==ElementType::Empty
     }
 
-    pub fn tick(&mut self){
-        let mut next  = self.cells.clone();
-        for row in 0..self.dimensions.height {
-            for col in 0..self.dimensions.width {
+    pub fn tick(&mut self) {
+        let mut next = self.cells.clone();
+        let gravity = 0.1;
 
+        for x in 0..self.dimensions.width {
+            for y in (0..self.dimensions.height).rev() {
+                let idx = self.get_index(y, x) as usize;
+                let cell = self.cells[idx];
+
+                if cell.element_type == ElementType::Sand {
+                    let mut moved = false;
+                    let new_pos = y;
+
+                    for new_y in (new_pos + 1..self.dimensions.height).rev() {
+                        if self.is_in_bounds(x,new_y){
+                            let below_idx = self.get_index(new_y, x) as usize;
+                            let below = &self.cells[below_idx];
+
+                        if below.element_type == ElementType::Empty {
+                            next[idx] = Cell {
+                                element_type: ElementType::Empty,
+                                mask:0,
+                            };
+                            
+                            next[below_idx] = cell;
+                            moved = true;
+                            break;
+                        } else {
+                            let dir = 1;
+                            if self.is_in_bounds(new_y,x+dir){
+                                let ba_index = self.get_index(new_y, x + dir) as usize;
+                                let below_a = &self.cells[ba_index];
+                                next[idx] = Cell {
+                                    element_type: ElementType::Empty,
+                                    mask:0,
+                                };
+                                if below_a.element_type == ElementType::Empty {
+                                    next[ba_index] = cell;
+                                    moved = true;
+                                    break;
+                                } 
+                            } else if self.is_in_bounds(new_y, x - dir){
+                                let bb_index = self.get_index(new_y, x - dir) as usize;
+                                let below_b = &self.cells[bb_index];
+                                next[idx] = Cell {
+                                    element_type: ElementType::Empty,
+                                    mask:0,
+                                };
+                                if below_b.element_type == ElementType::Empty {
+                                    next[bb_index] = cell;
+                                    moved = true;
+                                    break;
+                                }
+                            }
+                        }
+                        }
+                        
+                    }
+
+                    if !moved {
+                        next[idx] = cell;
+                    }
+                }
             }
         }
-        self.cells = next
-    }
 
-    
+        self.cells = next;
+    }
 }

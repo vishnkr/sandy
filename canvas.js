@@ -45,9 +45,9 @@ async function run(){
       ctx.fillRect(0, 0, canvas.width, canvas.height);
   }
   
-  let CELL_SIZE = 10;
-  const canvasWidth = 600;
-  const canvasHeight = 600;
+  let CELL_SIZE = 5;
+  const canvasWidth = 700;
+  const canvasHeight = 700;
   const height = canvasHeight/CELL_SIZE;
   const width = canvasWidth/CELL_SIZE;
   const world = new World(height,width);
@@ -67,15 +67,19 @@ async function run(){
   
   canvas.height = canvasHeight;
   canvas.width = canvasWidth;
-  
+  const cell_count = width*height;
   const getIndex = (row, column) => {
     return row * width + column;
   };
   
   const fps = new FPS();
   
+  const isInBounds = (idx)=>{
+    return idx>=0 && idx<cell_count
+  }
   const renderLoop = ()=> {
       fps.render();
+      world.tick();
       draw();
       requestAnimationFrame(renderLoop);
   }
@@ -89,18 +93,15 @@ async function run(){
       clearRect()
       //const cellsPtr = world.cells();
       //const cells = new Uint8Array(raw.memory.buffer, cellsPtr, width * height * 2);
-      for (let row = 0; row < height; row++) {
-          for (let col = 0; col < width; col++) {
-            const idx = getIndex(row, col);
-            if (count<100){
-              count+=1;
-            }
+      for (let y = 0; y < height; y++) {
+          for (let x = 0; x < width; x++) {
+            const idx = getIndex(y, x);
             let elementType = world.get_element_type(idx)
             if (elementType!==ElementType.Empty){
               let elementName = reverseElementTypeMap[elementType];
               let props = PARTICLE_PROPERTIES[elementName]
               let color = `rgb(${props.color.r},${props.color.g},${props.color.b})`
-              fillSquare(col,row,color)
+              fillSquare(y,x,color)
             };
                
           }
@@ -136,11 +137,13 @@ async function run(){
     const col = Math.min(Math.floor(canvasLeft / (CELL_SIZE + 1)), width - 1);*/
       var x = e.clientX - boundingRect.left,
           y = e.clientY - boundingRect.top;
-      let col = Math.floor(x/CELL_SIZE);
-      let row = Math.floor(y/CELL_SIZE);
-      
-      //let idx = getIndex(row,col);
-      world.paint(row,col,elementType);
+      let col = Math.floor(x/CELL_SIZE),
+         row = Math.floor(y/CELL_SIZE);
+
+      let idx = getIndex(row,col);
+      if (isInBounds(idx)){
+        world.paint(row,col,elementType);
+      }
       draw();
   }
   
@@ -149,6 +152,12 @@ async function run(){
   canvas.addEventListener('mouseup',handleMouseUp);
   canvas.addEventListener('mousemove',handleMouseMove);
   
+  function reset(){
+    world.reset();
+    draw();
+  }
+  document.getElementById("reset-button").addEventListener("click",reset);
+
 }
 
 run()

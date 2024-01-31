@@ -12,7 +12,6 @@ function createButton(particle) {
         }
         button.id = "selected-button"
         button.classList.add("selected");
-        console.log(`Selected particle type: ${particle.name}`);
         setSelectedParticle(particle);
     });
 
@@ -38,10 +37,6 @@ export function setupController(element){
     
     document.getElementById("pause-button").addEventListener("click", () => {
         console.log("Pause");
-    });
-    
-    document.getElementById("reset-button").addEventListener("click", () => {
-        console.log("Reset");
     });
     
     const btns = document.getElementById("buttons")
