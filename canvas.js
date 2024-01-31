@@ -5,6 +5,9 @@ import init,{World, ElementType} from './sandy-rs/pkg/sandy_rs';
 class FPS {
   constructor(){
     this.fps = document.getElementById("fps");
+    
+    this.latest = document.getElementById("latest");
+    this.avg = document.getElementById("avg");
     this.frames = [];
     this.lastFrameTimeStamp = performance.now();
   }
@@ -25,10 +28,8 @@ class FPS {
       sum += this.frames[i];
     }
     let mean = sum / this.frames.length;
-    this.fps.textContent = `
-         Frames per Second: latest = ${Math.round(fps)}
-        avg of last 100 = ${Math.round(mean)}
-        `.trim();    
+    this.latest.textContent = `Latest = ${Math.round(fps)}`.trim();
+    this.avg.textContent =  `Avg of last 100 = ${Math.round(mean)}`.trim();    
   }
     
 }
@@ -45,9 +46,9 @@ async function run(){
       ctx.fillRect(0, 0, canvas.width, canvas.height);
   }
   
-  let CELL_SIZE = 5;
-  const canvasWidth = 700;
-  const canvasHeight = 700;
+  let CELL_SIZE = 3;
+  const canvasWidth = 690;
+  const canvasHeight = 690;
   const height = canvasHeight/CELL_SIZE;
   const width = canvasWidth/CELL_SIZE;
   const world = new World(height,width);
@@ -100,7 +101,7 @@ async function run(){
             if (elementType!==ElementType.Empty){
               let elementName = reverseElementTypeMap[elementType];
               let props = PARTICLE_PROPERTIES[elementName]
-              let color = `rgb(${props.color.r},${props.color.g},${props.color.b})`
+              let color = getRandomColor(props.colors)
               fillSquare(y,x,color)
             };
                
@@ -108,7 +109,10 @@ async function run(){
       }
   }
   
-  
+  function getRandomColor(colorList) {
+    const randomIndex = Math.floor(Math.random() * colorList.length);
+    return colorList[randomIndex];
+  }
   let isMousePressed = false;
   function handleMouseDown(e) {
       isMousePressed = true;
@@ -157,7 +161,13 @@ async function run(){
     draw();
   }
   document.getElementById("reset-button").addEventListener("click",reset);
+  document.getElementById("play-button").addEventListener("click", () => {
+    console.log("Play");
+  });
 
+  document.getElementById("pause-button").addEventListener("click", () => {
+      console.log("Pause");
+  });
 }
 
 run()

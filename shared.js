@@ -1,12 +1,21 @@
 
 
 export const PARTICLE_PROPERTIES = {
-    "Sand": { name: "Sand", color: { r: 223, g: 175, b: 89 } },
-    "Water": { name: "Water", color: { r: 52, g: 108, b: 202 } },
-    "Stone": { name: "Stone", color: { r: 101, g: 106, b: 115 } },
-    "Ice": { name: "Ice", color: { r: 195, g: 154, b: 247 } },
-    "Fire": { name: "Fire", color: { r: 255, g: 123, b: 36 } },
-    "Acid": { name: "Acid", color: { r: 15, g: 177, b: 15 } },
+    "Sand": { name: "Sand", colors: [
+        'rgb(223, 175, 89)',
+        'rgb(221, 172, 75)',
+        'rgb(234, 180, 80)',
+        'rgb(239, 188, 93)'
+    ] },
+    "Water": { name: "Water", colors: [
+        'rgb(52, 108, 202)',
+        'rgb(85, 136, 213)',
+        'rgb(83, 134, 209)',
+    ]},
+    "Stone": { name: "Stone", colors: ['rgb(101,106,115)'] },
+    "Ice": { name: "Ice", colors: ['rgb(195,154,247)']},
+    "Fire": { name: "Fire", colors: ['rgb(255,123,36)'] },
+    "Acid": { name: "Acid", colors: ['rgb(15,177,15)']},
 };
 
 const sharedState = {

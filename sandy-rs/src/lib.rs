@@ -36,7 +36,9 @@ pub fn greet(name: &str) {
 #[derive(Clone,Copy,Debug)]
 pub struct Cell{
     pub element_type: ElementType,
-    //bitmask to store misc info. Currently lsb stores if simulation_step is odd(1) or even(0)
+    /* Bitmask to store cell info. 
+    |7 bits - random multiplier for color lightness | 1 bit - recent simulation step (odd - 1) or (even - 0)
+    */
     mask: u8,
 }
 
@@ -140,13 +142,6 @@ impl World{
             self.cells[i as usize] = EMPTY_CELL;
         }
     }
-    
-    
-
-    fn remove_cell(&mut self, idx:usize){
-        self.set_cell(idx, EMPTY_CELL)
-    }
-
 
     pub fn get_index(&self, row: i32, col: i32) -> usize {
         (row * self.dimensions.width + col) as usize
@@ -156,11 +151,12 @@ impl World{
         let idx = self.get_index(row, col);
         self.cells[idx as usize] = Cell{element_type,mask:0};
         // add random cells with same particle type around this position for brush like effect
-        let matrix = 5;
-        let extent = matrix / 2;
+        let p = match element_type{ElementType::Stone | ElementType::Ice => 1.0, _ => 0.5};
+        let brush_size =  match element_type{ElementType::Stone | ElementType::Ice => 6, _ => 10};
+        let extent = brush_size / 2;
         for i in (-extent as i32)..=(extent as i32) {
             for j in (-extent as i32)..=(extent as i32) {
-                if self.rand_float() < 0.50 {
+                if self.rand_float() < p{
                     let new_col = col.wrapping_add(i as i32);
                     let new_row = row.wrapping_add(j as i32);
 
