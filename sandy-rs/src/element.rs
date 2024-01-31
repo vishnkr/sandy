@@ -1,5 +1,7 @@
 use wasm_bindgen::prelude::*;
 
+use crate::{Cell, World, EMPTY_CELL};
+
 #[repr(u8)]
 #[wasm_bindgen]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -33,36 +35,63 @@ pub struct ElementProps{
     pub name: &'static str
 }
 
-const PARTICLE_PROPERTIES: [ElementProps;6] = [
-    ElementProps{
-        color: ElementColor::new(223, 175, 89),
-        name: "Sand",
-    },
-    ElementProps{
-        color: ElementColor::new(52, 108, 202),
-        name: "Water",
-    },
-    ElementProps{
-        color: ElementColor::new(101, 106, 115),
-        name: "Stone",
-    },
-    ElementProps{
-        color: ElementColor::new(195, 214, 247),
-        name: "Ice",
-    },
-    ElementProps{
-        color: ElementColor::new(255, 123, 36),
-        name: "Fire",
-    },
-    ElementProps{
-        color: ElementColor::new(165, 250, 95),
-        name: "Acid",
-    },
-];
+pub struct Painter<'a>{
+    pub world : &'a mut World,
+    pub x: i32,
+    pub y: i32
+}
 
-impl ElementType{
-    fn get_props(&self)->ElementProps{
-        PARTICLE_PROPERTIES[*self as usize]
+impl<'a> Painter<'a>{
+    fn set_cell(&mut self, dx: i32, dy:i32, mut cell:Cell){
+        let new_x = self.x + dx;
+        let new_y = self.y + dy;
+        if self.world.is_in_bounds(new_y, new_x){
+            let new_idx = self.world.get_index(new_y, new_x);
+            cell.update_mask(self.world.simulation_step);
+            self.world.set_cell(new_idx, cell);
+        }
+    }
+
+    fn get_cell(&mut self,dx:i32, dy:i32)->Cell{
+        let new_x = self.x+dx;
+        let new_y = self.y+dy;
+        if self.world.is_in_bounds(new_y,new_x){
+            self.world.get_cell(new_x,new_y)
+        } else{
+            Cell{ element_type: ElementType::Stone, mask:0}
+        }
+    }
+
+    fn swap_cells(&mut self, dx:i32,dy:i32,origin:Cell){
+        let dest = self.get_cell(dx, dy);
+        self.set_cell(dx, dy, origin);
+        self.set_cell(0, 0, dest);
     }
 }
 
+impl ElementType{
+    pub fn tick(&self, cell: Cell, mut painter: Painter){
+        if (cell.mask&1)^(painter.world.simulation_step&1) == 0{
+            return;
+        }
+        match *self{
+            ElementType::Sand => {
+                let next = painter.get_cell(0, 1);
+                if next.element_type==ElementType::Empty{
+                    painter.set_cell(0, 0, EMPTY_CELL);
+                    painter.set_cell(0, 1, cell);
+                }
+            },
+            ElementType::Water =>{
+                let next = painter.get_cell(0, 1);
+                if next.element_type==ElementType::Empty{
+                    painter.set_cell(0, 0, EMPTY_CELL);
+                    painter.set_cell(0, 1, cell);
+                } else if next.element_type == ElementType::Sand{
+                    painter.swap_cells(0,1,cell);
+                }
+            }
+            _=>{}
+        }
+    }
+}

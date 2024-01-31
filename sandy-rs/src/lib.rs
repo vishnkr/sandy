@@ -1,4 +1,3 @@
-
 use wasm_bindgen::prelude::*;
 extern crate cfg_if;
 extern crate rand;
@@ -37,15 +36,15 @@ pub fn greet(name: &str) {
 #[derive(Clone,Copy,Debug)]
 pub struct Cell{
     pub element_type: ElementType,
-    //bitmask to store misc info. Currently msb stores update_status
+    //bitmask to store misc info. Currently lsb stores if simulation_step is odd(1) or even(0)
     mask: u8,
 }
 
 const W: f64 = 5.0;
 
 pub struct Dimensions{
-    width: u32,
-    height: u32,
+    width: i32,
+    height: i32,
 }
 
 
@@ -53,8 +52,8 @@ pub struct Dimensions{
 pub struct World{
     dimensions: Dimensions,
     cells: Vec<Cell>,
-    frame_count:u8,
     rng: SmallRng,
+    simulation_step: u8
 }
 
 
@@ -66,8 +65,8 @@ const EMPTY_CELL: Cell = Cell {
 #[wasm_bindgen]
 #[derive(Clone, Copy, Debug)]
 pub struct Coordinates{
-    x: u32,
-    y: u32,
+    x: i32,
+    y: i32,
 }
 
 impl World{
@@ -83,23 +82,33 @@ impl World{
         let int_val = self.rand_int(1000);
         int_val as f64 / 1000.0
     }
+
+    fn get_cell(&self,x:i32,y:i32)->Cell{
+        let idx = self.get_index(y, x);
+        self.cells[idx]
+    }
+
+    fn set_cell(&mut self, idx:usize , mut cell:Cell){
+        cell.mask = self.simulation_step & 1;
+        self.cells[idx] = cell;
+    }
 }
 
 #[wasm_bindgen]
 impl World{
     #[wasm_bindgen(constructor)]
-    pub fn new(height:u32,width:u32)->World{
+    pub fn new(height:i32,width:i32)->World{
         let cells:Vec<Cell> = (0..width*height).map(|_i| EMPTY_CELL).collect();
         console_error_panic_hook::set_once();
         World{
             cells,
             dimensions: Dimensions{ height, width},
-            frame_count:0,
+            simulation_step:0,
             rng : SmallRng::from_entropy(),
         }
     }
     
-    //might not work since Cell
+    //might not work since Cell cant be accessed from wasm memory directly
     pub fn cells(&self) -> *const Cell {
         self.cells.as_ptr()
     }
@@ -108,18 +117,17 @@ impl World{
         self.cells[index].element_type.clone()
     }
 
-    pub fn width(&self)->u32{
+    pub fn width(&self)->i32{
         self.dimensions.width
     }
 
-    pub fn height(&self)->u32{
+    pub fn height(&self)->i32{
         self.dimensions.height
     }
 
    
-
-    pub fn get_coords(&self,pos:u32)->Coordinates{
-        Coordinates{ y:pos%self.dimensions.width, x:pos/self.dimensions.width}
+    pub fn get_coords(&self,pos:i32)->Coordinates{
+        Coordinates{ x:pos%self.dimensions.width, y:pos/self.dimensions.width}
     }
 
     #[wasm_bindgen(js_name="emptyCell")]
@@ -133,22 +141,18 @@ impl World{
         }
     }
     
-    fn set_cell(&mut self, idx:usize , mut cell:Cell){
-        cell.mask = (self.frame_count & 1) << 7;
-        self.cells[idx] = cell;
-    }
+    
 
     fn remove_cell(&mut self, idx:usize){
         self.set_cell(idx, EMPTY_CELL)
     }
 
 
-    pub fn get_index(&self, row: u32, col: u32) -> u32 {
-        let res = row * self.dimensions.width + col;
-        res
+    pub fn get_index(&self, row: i32, col: i32) -> usize {
+        (row * self.dimensions.width + col) as usize
     }
 
-    pub fn paint(&mut self, /*idx:usize*/ row:u32,col:u32,element_type:ElementType){
+    pub fn paint(&mut self, /*idx:usize*/ row:i32,col:i32,element_type:ElementType){
         let idx = self.get_index(row, col);
         self.cells[idx as usize] = Cell{element_type,mask:0};
         // add random cells with same particle type around this position for brush like effect
@@ -157,8 +161,8 @@ impl World{
         for i in (-extent as i32)..=(extent as i32) {
             for j in (-extent as i32)..=(extent as i32) {
                 if self.rand_float() < 0.50 {
-                    let new_col = col.wrapping_add(i as u32);
-                    let new_row = row.wrapping_add(j as u32);
+                    let new_col = col.wrapping_add(i as i32);
+                    let new_row = row.wrapping_add(j as i32);
 
                     // Check if the new position is within bounds
                     if self.is_in_bounds(new_row, new_col) {
@@ -170,81 +174,34 @@ impl World{
         }
     }
 
-    fn is_in_bounds(&self,x:u32,y:u32)->bool{
-        x<self.dimensions.height && y<self.dimensions.width
+    fn is_in_bounds(&self,y:i32,x:i32)->bool{
+        x>=0 && x<self.dimensions.width && y>=0 && y<self.dimensions.height
     }
 
-    pub fn is_cell_empty(&self,x:u32,y:u32)->bool{
+    pub fn is_cell_empty(&self,x:i32,y:i32)->bool{
         let index = self.get_index(x, y) as usize;
         self.cells[index].element_type==ElementType::Empty
     }
 
-    pub fn tick(&mut self) {
-        let mut next = self.cells.clone();
-        let gravity = 0.1;
 
+    pub fn tick(&mut self) {        
         for x in 0..self.dimensions.width {
-            for y in (0..self.dimensions.height).rev() {
+            for y in (0..self.dimensions.height) {
                 let idx = self.get_index(y, x) as usize;
                 let cell = self.cells[idx];
-
-                if cell.element_type == ElementType::Sand {
-                    let mut moved = false;
-                    let new_pos = y;
-
-                    for new_y in (new_pos + 1..self.dimensions.height).rev() {
-                        if self.is_in_bounds(x,new_y){
-                            let below_idx = self.get_index(new_y, x) as usize;
-                            let below = &self.cells[below_idx];
-
-                        if below.element_type == ElementType::Empty {
-                            next[idx] = Cell {
-                                element_type: ElementType::Empty,
-                                mask:0,
-                            };
-                            
-                            next[below_idx] = cell;
-                            moved = true;
-                            break;
-                        } else {
-                            let dir = 1;
-                            if self.is_in_bounds(new_y,x+dir){
-                                let ba_index = self.get_index(new_y, x + dir) as usize;
-                                let below_a = &self.cells[ba_index];
-                                next[idx] = Cell {
-                                    element_type: ElementType::Empty,
-                                    mask:0,
-                                };
-                                if below_a.element_type == ElementType::Empty {
-                                    next[ba_index] = cell;
-                                    moved = true;
-                                    break;
-                                } 
-                            } else if self.is_in_bounds(new_y, x - dir){
-                                let bb_index = self.get_index(new_y, x - dir) as usize;
-                                let below_b = &self.cells[bb_index];
-                                next[idx] = Cell {
-                                    element_type: ElementType::Empty,
-                                    mask:0,
-                                };
-                                if below_b.element_type == ElementType::Empty {
-                                    next[bb_index] = cell;
-                                    moved = true;
-                                    break;
-                                }
-                            }
-                        }
-                        }
-                        
-                    }
-
-                    if !moved {
-                        next[idx] = cell;
-                    }
-                }
+                cell.element_type.tick(cell,Painter{
+                    world: self,
+                    x,
+                    y
+                })
             }
         }
+        self.simulation_step = self.simulation_step.wrapping_add(1);
+    }
+}
 
-        self.cells = next;
+impl Cell{
+    fn update_mask(&mut self,simulation_step:u8){
+        self.mask = (simulation_step & 1);
     }
 }
